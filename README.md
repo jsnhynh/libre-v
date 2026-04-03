@@ -18,18 +18,32 @@ This repository contains the SystemVerilog implementation of a dual-issue, out-o
 |---------|---------------|
 | **ISA** | RISC-V RV32IM |
 | **Execution Model** | Speculative Out-of-Order Execution with In-Order Commit |
-| **Issue Width** | 2-Wide Superscalar |
-| **Pipeline Depth** | 8 Stages |
 | **Fetch Width** | 2 instructions per cycle |
+| **Issue Width** | 2-Wide Superscalar |
+| **Pipeline Depth** | 8-10 Stages |
 | **Frontend Prediction** | BTB + TAGE + RAS + FTQ based speculative frontend |
-| **Conditional Branch Prediction** | TAGE direction prediction for `BRANCH_COND` only |
-| **Jump / Call / Return Prediction** | BTB target/type prediction with RAS support for returns |
-| **Return Prediction** | Speculative RAS with early frontend update and pointer recovery |
-| **Frontend Queueing** | FTQ stores fetch-time branch metadata until commit |
 | **Instruction Buffering** | Fetch-side instruction buffer decouples fetch from decode |
 | **Register Renaming** | P6-style ROB-index-as-tag renaming scheme |
 | **Scheduling Model** | Reservation-station style issue with out-of-order execution |
 | **Commit Model** | In-order retirement with commit-time branch validation and frontend recovery |
+
+---
+
+## Microarchitectural Sizing
+
+| Subsystem | Configuration |
+|---|---|
+| **Frontend Fetch** | Fetch width = 2, Instruction buffer depth = 8 |
+| **Backend Width** | Dual-issue / dual-dispatch (`PIPE_WIDTH = 2`) |
+| **ROB** | 32 entries |
+| **ALU Reservation Station** | 8 entries |
+| **MDU Reservation Station** | MDU RS = 4 entries |
+| **Memory Ordering** | LSQ entries = 8 |
+| **Execution Resources** | Functional units = 5, RS structures = 4 |
+| **BTB** | 128 entries, 12-bit tags |
+| **RAS** | 16 entries |
+| **TAGE** | GHR = 32 bits, 4 tagged tables, base predictor = 512 entries, 256 entries/table, 8-bit tags |
+| **FTQ** | 16 entries |
 
 ---
 
@@ -45,7 +59,7 @@ This repository contains the SystemVerilog implementation of a dual-issue, out-o
 | **4** | **Dispatch** | `dispatch.sv` | Allocates backend bookkeeping and sends renamed operations into the proper backend structures. This stage writes entries into the ROB and issue structures, associates decoded / renamed metadata with backend control state, and transitions instructions from frontend sequencing into backend scheduling. |
 | **5** | **Issue** | `issue.sv`, `rs.sv`, `lsq.sv` | Tracks operand readiness, wakes instructions when results become available, and selects ready instructions for execution. Enables out-of-order execution by issuing ready younger instructions ahead of older stalled instructions when dependencies permit. |
 | **6** | **Execute** | `execute.sv`, `alu.sv`, `agu.sv`, `mdu.sv` | Performs actual computation in the functional units, including integer ALU operations, multiply / divide, address generation, and branch resolution. This is where resolved control-flow results are produced for later commit-time validation. |
-| **7** | **Writeback** | `cdb.sv` | Broadcasts completed execution results to dependent structures, marks values ready, wakes waiting instructions, and updates backend completion state so finished operations can later retire. |
+| **7** | **Writeback** | `cdb.sv` | Broadcasts completed execution results to dependent structures, |
 | **8** | **Commit** | `rob.sv` | Retires instructions in order, makes architectural state updates permanent, and validates fetch-time branch predictions against resolved outcomes. On mismatch, commit triggers frontend flush, redirect, GHR recovery, and RAS pointer recovery using FTQ metadata captured at fetch time. |
 
 ---
@@ -82,7 +96,7 @@ The frontend uses a speculative branch prediction subsystem to choose the next f
 
 ## Register Renaming Scheme
 
-**Files:** `core.sv`, `regs.sv`, `uarch_pkg.sv`
+**Files:** `prf.sv`, `rename.sv`, `rob.sv`,
 
 The backend uses a **P6-style renaming model where the ROB index acts as the speculative destination tag**.
 
